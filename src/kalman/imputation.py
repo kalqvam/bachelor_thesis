@@ -46,7 +46,7 @@ def apply_esg_kalman_imputation(df: pd.DataFrame,
             sigma2_level, sigma2_obs = parameter_pairs[column]
             
             try:
-                model = UnobservedComponents(series, level='local level', missing='fill')
+                model = UnobservedComponents(series.values, level='local level')
                 initial_params = [sigma2_level, sigma2_obs]
                 result = model.fit(initial_params, method='powell', maxiter=100, disp=False)
                 
