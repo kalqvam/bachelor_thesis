@@ -29,8 +29,7 @@ def extract_kalman_components(series: pd.Series,
     data_indices = series.dropna().index
     components = []
     
-    for idx in data_indices:
-        i = data_indices.get_loc(idx)
+    for i, idx in enumerate(data_indices):
         if i < len(states[0]):
             trend = states[0][i]
             original = series.loc[idx]
@@ -276,13 +275,13 @@ def apply_esg_kalman_imputation(df: pd.DataFrame,
                 
                 if model_result is not None:
                     states = model_result.smoother_results.smoothed_state
-                    trend = pd.Series(states[0], index=series.dropna().index)
+                    clean_indices = series.dropna().index
                     
                     result_idx = result_df[result_df['ticker'] == ticker].index
                     
-                    for idx in result_idx:
-                        if idx in trend.index:
-                            result_df.loc[idx, column] = trend.loc[idx]
+                    for i, idx in enumerate(clean_indices):
+                        if i < len(states[0]) and idx in result_idx:
+                            result_df.loc[idx, column] = states[0][i]
                 
             except Exception as e:
                 if verbose:
