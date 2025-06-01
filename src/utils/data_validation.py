@@ -270,4 +270,57 @@ def run_full_validation(df: pd.DataFrame,
         actual_date_column = validate_date_column(df, [date_column] if date_column else None)
         validation_report['details']['date_column'] = actual_date_column
     except DataValidationError as e:
-        validation_report['validation_passed'] =
+        validation_report['validation_passed'] = False
+        validation_report['errors'].append(str(e))
+        validation_report['details']['date_column'] = 'failed'
+    
+    if numeric_columns:
+        numeric_validation = validate_numeric_columns(df, numeric_columns)
+        validation_report['details']['numeric_columns'] = numeric_validation
+        
+        if numeric_validation['invalid']:
+            validation_report['warnings'].append(
+                f"Non-numeric columns found: {numeric_validation['invalid']}"
+            )
+        
+        if numeric_validation['missing']:
+            validation_report['warnings'].append(
+                f"Missing numeric columns: {numeric_validation['missing']}"
+            )
+    
+    panel_validation = validate_panel_structure(df, ticker_column, date_column)
+    validation_report['details']['panel_structure'] = panel_validation
+    
+    if not panel_validation['is_valid_panel']:
+        validation_report['validation_passed'] = False
+    
+    validation_report['errors'].extend(panel_validation['errors'])
+    validation_report['warnings'].extend(panel_validation['warnings'])
+    
+    return validation_report
+
+
+def get_validation_summary(validation_report: Dict[str, any]) -> str:
+    summary_lines = []
+    
+    summary_lines.append(f"Validation Status: {'PASSED' if validation_report['validation_passed'] else 'FAILED'}")
+    summary_lines.append(f"Dataset Shape: {validation_report['dataset_shape'][0]:,} rows × {validation_report['dataset_shape'][1]} columns")
+    
+    if validation_report['errors']:
+        summary_lines.append(f"\nErrors ({len(validation_report['errors'])}):")
+        for error in validation_report['errors']:
+            summary_lines.append(f"  - {error}")
+    
+    if validation_report['warnings']:
+        summary_lines.append(f"\nWarnings ({len(validation_report['warnings'])}):")
+        for warning in validation_report['warnings']:
+            summary_lines.append(f"  - {warning}")
+    
+    if 'panel_structure' in validation_report['details']:
+        stats = validation_report['details']['panel_structure']['stats']
+        summary_lines.append(f"\nPanel Structure:")
+        summary_lines.append(f"  - Unique tickers: {stats.get('unique_tickers', 'N/A'):,}")
+        summary_lines.append(f"  - Avg observations per ticker: {stats.get('avg_observations_per_ticker', 0):.1f}")
+        summary_lines.append(f"  - Duplicate combinations: {stats.get('duplicate_combinations', 0):,}")
+    
+    return "\n".join(summary_lines)
