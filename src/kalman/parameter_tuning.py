@@ -98,7 +98,8 @@ def fit_kalman_model(series: pd.Series,
         return None, None
     
     try:
-        model = UnobservedComponents(clean_data, level='local level')
+        clean_data_values = clean_data.values
+        model = UnobservedComponents(clean_data_values, level='local level')
         initial_params = [sigma2_level, sigma2_obs]
         result = model.fit(initial_params, method='powell', maxiter=100, disp=False)
         
