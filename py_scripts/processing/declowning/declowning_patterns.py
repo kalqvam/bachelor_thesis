@@ -154,11 +154,3 @@ def clean_financial_data(input_file, output_file=None):
 
 
     return df
-
-if __name__ == "__main__":
-    input_file = "panel_data_processed.csv"
-    output_file = "declowned_panel_data.csv"
-
-    cleaned_df = clean_financial_data(input_file, output_file)
-
-    print(f"\nClown removal completed! Cleaned data saved to {output_file}")
