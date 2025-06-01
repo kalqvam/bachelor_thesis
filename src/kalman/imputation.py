@@ -15,25 +15,37 @@ from ..utils import (
 def extract_kalman_components(series: pd.Series,
                             sigma2_level: float,
                             sigma2_obs: float) -> Optional[Dict]:
-    model_result, innovations = fit_kalman_model(
-        series, sigma2_level, sigma2_obs, get_innovations=True
-    )
+    clean_data = series.dropna()
     
-    if model_result is None or innovations is None:
+    if len(clean_data) < 10:
         return None
     
-    states = model_result.smoother_results.smoothed_state
-    
-    is_white_noise, _, _ = evaluate_white_noise_residuals(innovations)
-    
-    data_indices = series.dropna().index
-    components = []
-    
-    for i, idx in enumerate(data_indices):
-        if i < len(states[0]):
-            trend = states[0][i]
+    try:
+        clean_data_values = clean_data.values
+        model = UnobservedComponents(clean_data_values, level='local level')
+        initial_params = [sigma2_level, sigma2_obs]
+        result = model.fit(initial_params, method='powell', maxiter=100, disp=False)
+        
+        filter_results = result.filter_results
+        innovations = filter_results.forecasts_error[0]
+        is_white_noise, _, _ = evaluate_white_noise_residuals(innovations)
+        
+        states = result.smoother_results.smoothed_state[0]
+        
+        full_smoothed = pd.Series(index=series.index, dtype=float)
+        clean_indices = clean_data.index
+        
+        for i, idx in enumerate(clean_indices):
+            if i < len(states):
+                full_smoothed.loc[idx] = states[i]
+        
+        full_smoothed = full_smoothed.interpolate(method='linear')
+        
+        components = []
+        for idx in series.index:
             original = series.loc[idx]
-            residual = original - trend
+            trend = full_smoothed.loc[idx] if not pd.isna(full_smoothed.loc[idx]) else np.nan
+            residual = original - trend if not pd.isna(original) and not pd.isna(trend) else np.nan
             
             components.append({
                 'index': idx,
@@ -41,33 +53,37 @@ def extract_kalman_components(series: pd.Series,
                 'trend': trend,
                 'residual': residual
             })
-    
-    return {
-        'components': components,
-        'is_white_noise': is_white_noise,
-        'model_result': model_result
-    }
+        
+        return {
+            'components': components,
+            'full_smoothed': full_smoothed,
+            'is_white_noise': is_white_noise,
+            'model_result': result
+        }
+        
+    except Exception:
+        return None
 
 
 def apply_kalman_to_ticker(ticker_data: pd.DataFrame,
                          column: str,
                          params: Dict,
-                         date_column: str = 'date_quarter') -> Optional[pd.DataFrame]:
+                         date_column: str = 'date_quarter') -> Tuple[Optional[pd.DataFrame], Optional[pd.Series]]:
     if column not in ticker_data.columns:
-        return None
+        return None, None
     
     ticker = ticker_data['ticker'].iloc[0]
     series = ticker_data[column]
     
     if series.dropna().size < 10:
-        return None
+        return None, None
     
     result = extract_kalman_components(
         series, params['sigma2_level'], params['sigma2_obs']
     )
     
     if result is None:
-        return None
+        return None, None
     
     components_data = []
     for comp in result['components']:
@@ -82,13 +98,16 @@ def apply_kalman_to_ticker(ticker_data: pd.DataFrame,
             'is_white_noise': result['is_white_noise']
         })
     
-    return pd.DataFrame(components_data)
+    components_df = pd.DataFrame(components_data)
+    smoothed_series = result['full_smoothed']
+    
+    return components_df, smoothed_series
 
 
 def process_all_tickers(df: pd.DataFrame,
                        column: str,
                        params: Dict,
-                       verbose: bool = True) -> Optional[pd.DataFrame]:
+                       verbose: bool = True) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     if verbose:
         print(f"Processing {column} for all tickers...")
     
@@ -100,29 +119,38 @@ def process_all_tickers(df: pd.DataFrame,
             raise ValueError("No suitable date column found")
     
     all_components = []
+    updated_df = df_prepared.copy()
     successful_tickers = 0
     
     for ticker in tqdm(df_prepared['ticker'].unique(), desc=f"Processing {column}"):
         ticker_data = df_prepared[df_prepared['ticker'] == ticker].sort_values('date_quarter')
         
-        components_df = apply_kalman_to_ticker(ticker_data, column, params)
+        components_df, smoothed_series = apply_kalman_to_ticker(ticker_data, column, params)
         
-        if components_df is not None:
+        if components_df is not None and smoothed_series is not None:
             all_components.append(components_df)
+            
+            ticker_mask = updated_df['ticker'] == ticker
+            ticker_indices = updated_df[ticker_mask].index
+            
+            for idx in ticker_indices:
+                if idx in smoothed_series.index and not pd.isna(smoothed_series.loc[idx]):
+                    updated_df.loc[idx, column] = smoothed_series.loc[idx]
+            
             successful_tickers += 1
     
     if all_components:
-        result_df = pd.concat(all_components, ignore_index=True)
+        components_result = pd.concat(all_components, ignore_index=True)
         
         if verbose:
             print(f"Successfully processed {successful_tickers} tickers")
-            print(f"Generated {len(result_df)} component observations")
+            print(f"Generated {len(components_result)} component observations")
         
-        return result_df
+        return components_result, updated_df
     else:
         if verbose:
             print(f"No components extracted for {column}")
-        return None
+        return None, df_prepared
 
 
 def create_components_dataframe(results: List[pd.DataFrame]) -> pd.DataFrame:
@@ -141,16 +169,17 @@ def apply_kalman_imputation(df: pd.DataFrame,
                           optimal_params: pd.DataFrame,
                           save_results: bool = True,
                           output_dir: str = DEFAULT_OUTPUT_DIR,
-                          verbose: bool = True) -> Tuple[Optional[pd.DataFrame], Dict]:
+                          verbose: bool = True) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Dict]:
     if verbose:
         print_subsection_header("Applying Kalman Filter Imputation")
     
     if optimal_params is None or optimal_params.empty:
         if verbose:
             print("No optimal parameters provided")
-        return None, {'error': 'no_parameters'}
+        return None, None, {'error': 'no_parameters'}
     
-    all_results = []
+    all_components = []
+    updated_df = df.copy()
     processing_stats = {}
     
     for _, row in optimal_params.iterrows():
@@ -160,44 +189,57 @@ def apply_kalman_imputation(df: pd.DataFrame,
             'sigma2_obs': row['sigma2_obs']
         }
         
-        components_df = process_all_tickers(df, column, params, verbose)
+        components_df, column_updated_df = process_all_tickers(updated_df, column, params, verbose)
         
-        if components_df is not None:
-            all_results.append(components_df)
+        if components_df is not None and column_updated_df is not None:
+            all_components.append(components_df)
+            updated_df = column_updated_df
+            
+            original_missing = df[column].isna().sum()
+            final_missing = updated_df[column].isna().sum()
+            imputed_count = original_missing - final_missing
+            
             processing_stats[column] = {
                 'tickers_processed': components_df['ticker'].nunique(),
                 'observations_generated': len(components_df),
+                'original_missing': original_missing,
+                'final_missing': final_missing,
+                'values_imputed': imputed_count,
                 'white_noise_percentage': (components_df['is_white_noise'].sum() / len(components_df) * 100) if len(components_df) > 0 else 0
             }
         else:
             processing_stats[column] = {'error': 'no_components_extracted'}
     
-    if all_results:
-        final_df = create_components_dataframe(all_results)
+    if all_components:
+        final_components_df = create_components_dataframe(all_components)
         
         summary_stats = {
             'total_columns_processed': len(optimal_params),
-            'successful_columns': len(all_results),
-            'total_observations': len(final_df),
-            'unique_tickers': final_df['ticker'].nunique() if not final_df.empty else 0,
+            'successful_columns': len(all_components),
+            'total_component_observations': len(final_components_df),
+            'unique_tickers': final_components_df['ticker'].nunique() if not final_components_df.empty else 0,
             'processing_details': processing_stats
         }
         
         if save_results:
-            output_path = save_kalman_results(final_df, optimal_params, output_dir, verbose)
+            output_path = save_kalman_results(final_components_df, optimal_params, output_dir, verbose)
             summary_stats['output_path'] = output_path
         
         if verbose:
             print(f"\nImputation Summary:")
             print(f"Processed {len(optimal_params)} columns")
-            print(f"Generated {len(final_df)} total observations")
-            print(f"Covered {final_df['ticker'].nunique()} unique tickers")
+            print(f"Generated {len(final_components_df)} component observations")
+            print(f"Covered {final_components_df['ticker'].nunique()} unique tickers")
+            
+            for col, stats in processing_stats.items():
+                if 'values_imputed' in stats:
+                    print(f"{col}: imputed {stats['values_imputed']} missing values")
         
-        return final_df, summary_stats
+        return final_components_df, updated_df, summary_stats
     else:
         if verbose:
             print("No components extracted for any column")
-        return None, {'error': 'no_results'}
+        return None, df.copy(), {'error': 'no_results'}
 
 
 def save_kalman_results(components_df: pd.DataFrame,
