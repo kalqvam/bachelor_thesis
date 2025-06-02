@@ -136,6 +136,48 @@ def remove_seasonality(series: pd.Series, period: int) -> pd.Series:
         return series
 
 
+def plot_stl_decomposition(series: pd.Series, 
+                          period: int, 
+                          ticker: str, 
+                          column: str) -> bool:
+    if len(series) < period * 2:
+        print(f"Time series too short for STL decomposition visualization")
+        return False
+    
+    seasonal_smoothing = period if period % 2 == 1 else period + 1
+    
+    try:
+        stl = STL(series,
+                period=period,
+                seasonal=seasonal_smoothing,
+                trend=None,
+                robust=True)
+        result = stl.fit()
+        
+        fig, axes = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
+        
+        axes[0].plot(series.index, series.values)
+        axes[0].set_title(f'Original {column} for {ticker}')
+        
+        axes[1].plot(series.index, result.trend)
+        axes[1].set_title('Trend Component')
+        
+        axes[2].plot(series.index, result.seasonal)
+        axes[2].set_title(f'Seasonal Component (period={period}, smoothing={seasonal_smoothing})')
+        
+        axes[3].plot(series.index, result.resid)
+        axes[3].set_title('Residual Component')
+        
+        plt.tight_layout()
+        plt.show()
+        
+        return True
+    
+    except Exception as e:
+        print(f"Error in STL decomposition visualization: {str(e)}")
+        return False
+
+
 def process_company_seasonality(company_df: pd.DataFrame, 
                                column: str,
                                plot: bool = False,
@@ -246,3 +288,164 @@ def process_company_seasonality(company_df: pd.DataFrame,
         print("-" * 50)
     
     return company_df, stats
+
+
+def process_all_companies_seasonality(df: pd.DataFrame, 
+                                     column: str,
+                                     sample_size: Optional[int] = None,
+                                     verbose: bool = True) -> Tuple[pd.DataFrame, Dict]:
+    
+    if verbose:
+        print_section_header(f"Seasonality Processing for {column}")
+    
+    unique_tickers = df[DEFAULT_TICKER_COLUMN].unique()
+    
+    if verbose:
+        print(f"Total unique tickers in dataset: {format_number(len(unique_tickers))}")
+    
+    if sample_size:
+        unique_tickers = unique_tickers[:sample_size]
+        if verbose:
+            print(f"Processing sample of {format_number(sample_size)} tickers")
+    
+    processed_dfs = []
+    company_stats = []
+    seasonality_summary = {
+        'total_processed': 0,
+        'seasonal_detected': 0,
+        'periods_detected': [],
+        'processing_errors': 0,
+        'constant_series': 0,
+        'too_many_missing': 0
+    }
+    
+    for i, ticker in enumerate(unique_tickers):
+        if verbose and (i+1) % 10 == 0:
+            print(f"Progress: {format_number(i+1)}/{format_number(len(unique_tickers))} companies processed ({(i+1)/len(unique_tickers)*100:.1f}%)")
+        
+        company_df = df[df[DEFAULT_TICKER_COLUMN] == ticker].copy()
+        
+        if len(company_df) < SEASONALITY_MIN_DATA_POINTS:
+            if verbose:
+                print(f"WARNING: {ticker} has insufficient data points ({len(company_df)}), skipping seasonality detection")
+            processed_dfs.append(company_df)
+            continue
+        
+        company_df_before = company_df.copy()
+        company_df, stats = process_company_seasonality(company_df, column, plot=False, verbose=False)
+        
+        processed_dfs.append(company_df)
+        company_stats.append(stats)
+        
+        seasonality_summary['total_processed'] += 1
+        
+        if stats['seasonality_detected']:
+            seasonality_summary['seasonal_detected'] += 1
+            if stats['period'] and stats['period'] not in seasonality_summary['periods_detected']:
+                seasonality_summary['periods_detected'].append(stats['period'])
+        
+        if stats['processing_status'] == 'constant_series':
+            seasonality_summary['constant_series'] += 1
+        elif stats['processing_status'] == 'too_many_missing':
+            seasonality_summary['too_many_missing'] += 1
+    
+    processed_df = pd.concat(processed_dfs, ignore_index=True)
+    
+    seasonal_count = seasonality_summary['seasonal_detected']
+    total_count = seasonality_summary['total_processed']
+    seasonal_pct = (seasonal_count / total_count * 100) if total_count > 0 else 0
+    periods = seasonality_summary['periods_detected']
+    
+    summary_stats = {
+        'column': column,
+        'total_tickers_processed': total_count,
+        'seasonal_detected': seasonal_count,
+        'seasonal_percentage': seasonal_pct,
+        'periods_detected': periods,
+        'company_stats': company_stats,
+        'processing_summary': seasonality_summary
+    }
+    
+    if verbose:
+        print_subsection_header("Seasonality Processing Summary")
+        print(f"{column.upper()}:")
+        print(f"  Companies with seasonality: {format_number(seasonal_count)}/{format_number(total_count)} ({seasonal_pct:.1f}%)")
+        print(f"  Detected seasonal periods: {periods}")
+        print(f"  Constant series: {format_number(seasonality_summary['constant_series'])}")
+        print(f"  Too many missing: {format_number(seasonality_summary['too_many_missing'])}")
+    
+    return processed_df, summary_stats
+
+
+def apply_seasonality_processing(df: pd.DataFrame,
+                                columns: Union[str, List[str]],
+                                sample_size: Optional[int] = None,
+                                save_file: bool = True,
+                                output_filename: str = 'processed_data_deseasonalized.csv',
+                                replace_original: bool = True,
+                                verbose: bool = True) -> Tuple[pd.DataFrame, Dict]:
+    
+    if verbose:
+        print_section_header("Seasonality Processing Pipeline")
+    
+    if isinstance(columns, str):
+        columns = [columns]
+    
+    df_prepared, prep_stats = prepare_seasonality_data(df, verbose=verbose)
+    processed_df = df_prepared.copy()
+    
+    all_stats = {
+        'preparation': prep_stats,
+        'column_results': {},
+        'overall_summary': {}
+    }
+    
+    for column in columns:
+        if verbose:
+            print(f"\nProcessing column: {column}")
+        
+        current_df, column_stats = process_all_companies_seasonality(
+            processed_df, column, sample_size, verbose
+        )
+        
+        processed_df = current_df.copy()
+        all_stats['column_results'][column] = column_stats
+        
+        if replace_original:
+            deseasonalized_col = f'{column}_deseasonalized'
+            if deseasonalized_col in processed_df.columns:
+                if verbose:
+                    print(f"Replacing original {column} with deseasonalized values")
+                processed_df[column] = processed_df[deseasonalized_col]
+                processed_df.drop(columns=[deseasonalized_col], inplace=True)
+                if verbose:
+                    print(f"Dropped intermediate column {deseasonalized_col}")
+    
+    if prep_stats['temp_column_created'] and 'date_quarter' in processed_df.columns:
+        if verbose:
+            print("Dropping temporary 'date_quarter' column")
+        processed_df.drop(columns=['date_quarter'], inplace=True)
+    
+    total_seasonal = sum(stats['seasonal_detected'] for stats in all_stats['column_results'].values())
+    total_processed = sum(stats['total_tickers_processed'] for stats in all_stats['column_results'].values())
+    
+    all_stats['overall_summary'] = {
+        'columns_processed': len(columns),
+        'total_company_column_combinations': total_processed,
+        'total_seasonal_detected': total_seasonal,
+        'final_shape': processed_df.shape,
+        'sample_size_used': sample_size
+    }
+    
+    if save_file:
+        processed_df.to_csv(output_filename, index=False)
+        if verbose:
+            print(f"Saved processed data to {output_filename}")
+    
+    if verbose:
+        print_subsection_header("Overall Processing Summary")
+        print(f"Columns processed: {len(columns)}")
+        print(f"Total seasonality instances detected: {format_number(total_seasonal)}")
+        print(f"Final dataset shape: {processed_df.shape}")
+    
+    return processed_df, all_stats
