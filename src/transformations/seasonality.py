@@ -5,7 +5,7 @@ from statsmodels.tsa.stattools import adfuller
 from statsmodels.stats.diagnostic import acorr_ljungbox
 from statsmodels.tsa.seasonal import STL
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
-from typing import List, Dict, Tuple, Optional
+from typing import Union, List, Dict, Tuple, Optional
 import warnings
 
 from ..utils import (
