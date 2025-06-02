@@ -8,7 +8,7 @@ from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from typing import List, Dict, Tuple, Optional
 import warnings
 
-from ...utils import (
+from ..utils import (
     DEFAULT_TICKER_COLUMN, SEASONALITY_MAX_LAGS, SEASONALITY_ALPHA, 
     SEASONALITY_MIN_DATA_POINTS, print_section_header, print_subsection_header,
     format_number, print_processing_stats
