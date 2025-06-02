@@ -137,17 +137,12 @@ def remove_seasonality(series: pd.Series, period: int) -> pd.Series:
 
 
 def process_company_seasonality(company_df: pd.DataFrame, 
-                               column: str, 
-                               ticker: str = None,
-                               max_lags: int = SEASONALITY_MAX_LAGS,
-                               alpha: float = SEASONALITY_ALPHA,
-                               min_data_points: int = SEASONALITY_MIN_DATA_POINTS,
+                               column: str,
                                plot: bool = False,
                                verbose: bool = False) -> Tuple[pd.DataFrame, Dict]:
     
     company_df = company_df.sort_values('date_quarter')
-    if ticker is None:
-        ticker = company_df[DEFAULT_TICKER_COLUMN].iloc[0]
+    ticker = company_df[DEFAULT_TICKER_COLUMN].iloc[0]
     
     stats = {
         'ticker': ticker,
@@ -158,56 +153,96 @@ def process_company_seasonality(company_df: pd.DataFrame,
         'processing_status': 'success'
     }
 
-    if column not in company_df.columns:
-        stats['processing_status'] = 'column_not_found'
-        company_df[f'{column}_deseasonalized'] = np.nan
-        return company_df, stats
+    if verbose:
+        print(f"\nProcessing {ticker} for {column}:")
+        print(f"Number of data points: {len(company_df)}")
 
-    try:
-        series = company_df.set_index('date_quarter')[column].astype(float)
-    except Exception as e:
-        stats['processing_status'] = 'series_creation_error'
-        stats['error'] = str(e)
-        company_df[f'{column}_deseasonalized'] = company_df[column]
-        return company_df, stats
+    series = company_df.set_index('date_quarter')[column].astype(float)
 
     missing_count = series.isna().sum()
     missing_pct = missing_count / len(series) * 100
     stats['missing_count'] = missing_count
     stats['missing_percentage'] = missing_pct
+    
+    if verbose:
+        print(f"Missing values: {missing_count} ({missing_pct:.1f}%)")
 
     if missing_pct > 20:
+        if verbose:
+            print(f"Too many missing values for {ticker} {column}, skipping seasonality detection")
         stats['processing_status'] = 'too_many_missing'
         company_df[f'{column}_deseasonalized'] = company_df[column]
         return company_df, stats
 
     if missing_count > 0:
         series = series.interpolate(method='linear')
+        if verbose:
+            print(f"Filled {missing_count} missing values with linear interpolation")
 
     min_val = series.min()
     max_val = series.max()
 
     if (abs(min_val - 0) < 1e-6 and abs(max_val - 0) < 1e-6) or (abs(min_val - 1) < 1e-6 and abs(max_val - 1) < 1e-6):
+        if verbose:
+            print(f"RESULT: Series is constant at {min_val} (likely min-max normalized extreme), skipping seasonality detection")
         stats['processing_status'] = 'constant_series'
         company_df[f'{column}_deseasonalized'] = company_df[column]
         return company_df, stats
 
-    is_seasonal, period = detect_seasonality(series, ticker=ticker, column=column, max_lags=max_lags, alpha=alpha, verbose=verbose)
+    is_seasonal, period = detect_seasonality(series, ticker=ticker, column=column, verbose=verbose)
 
     stats['seasonality_detected'] = is_seasonal
     stats['period'] = period
 
     if is_seasonal and period is not None:
+        if verbose:
+            print(f"RESULT: Detected seasonality with period {period} for {ticker} in {column}")
+
+        if plot:
+            plt.figure(figsize=(15, 10))
+
+            plt.subplot(3, 1, 1)
+            plt.plot(series.index, series.values)
+            plt.title(f"Original {column} for {ticker}")
+
+            plt.subplot(3, 1, 2)
+            plot_acf(series.dropna(), lags=min(20, len(series)//2), ax=plt.gca())
+            plt.title(f"ACF for {column}")
+
+            plt.subplot(3, 1, 3)
+            plot_pacf(series.dropna(), lags=min(20, len(series)//2), ax=plt.gca())
+            plt.title(f"PACF for {column}")
+
+            plt.tight_layout()
+            plt.show()
+
+            plot_stl_decomposition(series, period, ticker, column)
+
         deseasonalized = remove_seasonality(series, period)
         company_df[f'{column}_deseasonalized'] = deseasonalized.values
+
+        seasonal_component = series.values - deseasonalized.values
+        seasonal_magnitude = np.abs(seasonal_component).mean()
+        seasonal_pct = (seasonal_magnitude / np.abs(series.values).mean()) * 100
+        stats['seasonal_magnitude'] = seasonal_magnitude
+        stats['seasonal_percentage'] = seasonal_pct
         
         if verbose:
-            seasonal_component = series.values - deseasonalized.values
-            seasonal_magnitude = np.abs(seasonal_component).mean()
-            seasonal_pct = (seasonal_magnitude / np.abs(series.values).mean()) * 100
-            stats['seasonal_magnitude'] = seasonal_magnitude
-            stats['seasonal_percentage'] = seasonal_pct
+            print(f"Seasonal adjustment magnitude: {seasonal_magnitude:.2f} ({seasonal_pct:.1f}% of mean)")
+
+        if plot:
+            plt.figure(figsize=(12, 6))
+            plt.plot(company_df['date_quarter'], company_df[column], label='Original')
+            plt.plot(company_df['date_quarter'], company_df[f'{column}_deseasonalized'], label='Deseasonalized')
+            plt.title(f"Deseasonalized {column} for {ticker}")
+            plt.legend()
+            plt.show()
     else:
+        if verbose:
+            print(f"RESULT: No seasonality detected for {ticker} in {column}")
         company_df[f'{column}_deseasonalized'] = company_df[column]
 
+    if verbose:
+        print("-" * 50)
+    
     return company_df, stats
