@@ -20,6 +20,24 @@ from .unit_root_tests import (
     format_panic_summary
 )
 
+from .diagnostics import (
+    PanelDiagnostics,
+    quick_diagnostics
+)
+
+from .correlations import (
+    calculate_correlation_matrices,
+    print_correlation_matrices,
+    run_correlation_analysis
+)
+
+from .variance_analysis import (
+    analyze_panel_variables,
+    remove_near_zero_companies,
+    print_panel_analysis_report,
+    analyze_panel_dataset
+)
+
 __all__ = [
     'unit_root_tests',
     'pesaran_cd_test',
@@ -39,5 +57,14 @@ __all__ = [
     'test_panel_unit_roots',
     'check_panel_stationarity',
     'print_panic_results',
-    'format_panic_summary'
+    'format_panic_summary',
+    'PanelDiagnostics',
+    'quick_diagnostics',
+    'calculate_correlation_matrices',
+    'print_correlation_matrices', 
+    'run_correlation_analysis',
+    'analyze_panel_variables',
+    'remove_near_zero_companies',
+    'print_panel_analysis_report',
+    'analyze_panel_dataset'
 ]
