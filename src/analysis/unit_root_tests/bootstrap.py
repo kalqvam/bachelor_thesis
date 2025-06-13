@@ -2,6 +2,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Any, Optional
 
 from .panel_diagnostics import adf_test
+from ...utils import print_subsection_header
 
 
 def moving_block_bootstrap(x: np.ndarray, block_size: int, sample_size: int = None) -> np.ndarray:
