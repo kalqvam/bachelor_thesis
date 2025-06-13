@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.decomposition import PCA
 from typing import Dict, Tuple, Any
 
-from ...utils import print_subsection_header
+from ..utils import print_subsection_header
 
 
 def bai_ng_ic(X: np.ndarray, max_factors: int = 25, cumulative_var_threshold: float = 0.85) -> Tuple[int, Dict[str, Any]]:
