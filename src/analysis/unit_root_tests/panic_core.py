@@ -9,15 +9,17 @@ from ...utils import print_section_header, print_subsection_header, format_numbe
 
 
 def panic_test(data_panel: pd.DataFrame, n_bootstraps: int = 199, trend: bool = False, 
-               block_size: Optional[int] = None, cumulative_var_threshold: float = 0.85) -> Dict[str, Any]:
+               block_size: Optional[int] = None, cumulative_var_threshold: float = 0.85, 
+               verbose: bool = False) -> Dict[str, Any]:
     
-    decomp_result = panic_decomposition(data_panel, cumulative_var_threshold=cumulative_var_threshold)
+    decomp_result = panic_decomposition(data_panel, cumulative_var_threshold=cumulative_var_threshold, verbose=verbose)
     
     bootstrap_result = unified_bootstrap(
         decomp_result,
         n_bootstraps=n_bootstraps,
         block_size=block_size,
-        trend=trend
+        trend=trend,
+        verbose=verbose
     )
     
     result = {
@@ -49,7 +51,7 @@ def panic_test(data_panel: pd.DataFrame, n_bootstraps: int = 199, trend: bool = 
 
 def test_panel_unit_roots(data: pd.DataFrame, variables_to_test: Optional[List[str]] = None, 
                          n_bootstraps: int = 999, trend: bool = False, block_size: Optional[int] = None, 
-                         cumulative_var_threshold: float = 0.85) -> Dict[str, Any]:
+                         cumulative_var_threshold: float = 0.85, verbose: bool = True) -> Dict[str, Any]:
     
     if variables_to_test is None:
         variables_to_test = data.select_dtypes(include=[np.number]).columns.tolist()
@@ -59,18 +61,29 @@ def test_panel_unit_roots(data: pd.DataFrame, variables_to_test: Optional[List[s
     results = {}
     tickers = data['ticker'].unique()
     
+    if verbose:
+        print_section_header("Panel Unit Root Testing (PANIC)")
+        print(f"Testing {len(variables_to_test)} variables with {n_bootstraps} bootstrap replications")
+        print(f"Specification: {'with trend' if trend else 'without trend'}")
+        print(f"Cumulative variance threshold: {cumulative_var_threshold}")
+    
     for variable in variables_to_test:
-        print(f"\n{'-'*80}\nTesting variable: {variable}\n{'-'*80}")
+        if verbose:
+            print_subsection_header(f"Testing Variable: {variable}")
+        
         var_results = {}
         
         cd_result = pesaran_cd_test(data, variable)
         var_results['pesaran_cd'] = cd_result
-        print(f"Pesaran CD test p-value: {cd_result['p_value']:.4f}")
         
-        pivot_data, prep_stats = prepare_panel_data(data, variable)
+        if verbose:
+            print(f"Pesaran CD test p-value: {cd_result['p_value']:.4f}")
+        
+        pivot_data, prep_stats = prepare_panel_data(data, variable, verbose=False)
         
         if pivot_data is None:
-            print(f"Warning: Cannot prepare data for {variable}: {prep_stats.get('error', 'Unknown error')}")
+            if verbose:
+                print(f"Warning: Cannot prepare data for {variable}: {prep_stats.get('error', 'Unknown error')}")
             var_results['panic_test'] = {
                 'error': prep_stats.get('error', 'Data preparation failed')
             }
@@ -81,27 +94,33 @@ def test_panel_unit_roots(data: pd.DataFrame, variables_to_test: Optional[List[s
         
         if block_size is None:
             auto_block_size = max(int(np.sqrt(T)), 2)
-            print(f"Auto-selected block size: {auto_block_size}")
+            if verbose:
+                print(f"Auto-selected block size: {auto_block_size}")
         else:
             auto_block_size = block_size
+            if verbose:
+                print(f"Using specified block size: {auto_block_size}")
         
-        spec_type = "with trend" if trend else "without trend"
-        print(f"PANIC specification: {spec_type}")
-        print(f"Using unified bootstrap with {n_bootstraps} replications.")
-        print(f"Using cumulative variance threshold of {cumulative_var_threshold} for factor selection fallback.")
+        if verbose:
+            print(f"Panel dimensions: N={N}, T={T}")
+            print(f"Running PANIC test...")
         
         panic_result = panic_test(
             pivot_data,
             n_bootstraps=n_bootstraps,
             trend=trend,
             block_size=auto_block_size,
-            cumulative_var_threshold=cumulative_var_threshold
+            cumulative_var_threshold=cumulative_var_threshold,
+            verbose=False
         )
         
-        print(f"PANIC results:")
-        print(f"  Common components test (Pa): {panic_result['Pa_stat']:.4f}, bootstrap p-value: {panic_result['Pa_p_value']:.4f}")
-        print(f"  Idiosyncratic components test (Pb): {panic_result['Pb_stat']:.4f}, bootstrap p-value: {panic_result['Pb_p_value']:.4f}")
-        print(f"  Pooled test (Pc): {panic_result['Pc_stat']:.4f}, bootstrap p-value: {panic_result['Pc_p_value']:.4f}")
+        if verbose:
+            print(f"PANIC results:")
+            print(f"  Common components test (Pa): {panic_result['Pa_stat']:.4f}, p-value: {panic_result['Pa_p_value']:.4f}")
+            print(f"  Idiosyncratic components test (Pb): {panic_result['Pb_stat']:.4f}, p-value: {panic_result['Pb_p_value']:.4f}")
+            print(f"  Pooled test (Pc): {panic_result['Pc_stat']:.4f}, p-value: {panic_result['Pc_p_value']:.4f}")
+            print(f"  Number of factors: {panic_result['n_factors']}")
+            print(f"  Bootstrap success rate: {panic_result['bootstrap_samples']}/{panic_result['total_attempted']}")
         
         var_results['panic_test'] = panic_result
         results[variable] = var_results
@@ -111,14 +130,15 @@ def test_panel_unit_roots(data: pd.DataFrame, variables_to_test: Optional[List[s
 
 def check_panel_stationarity(data: pd.DataFrame, variables: Optional[List[str]] = None, 
                             significance: float = 0.05, trend: bool = True, n_bootstraps: int = 199, 
-                            cumulative_var_threshold: float = 0.85) -> Dict[str, Any]:
+                            cumulative_var_threshold: float = 0.85, verbose: bool = True) -> Dict[str, Any]:
     
     results = test_panel_unit_roots(
         data=data,
         variables_to_test=variables,
         n_bootstraps=n_bootstraps,
         trend=trend,
-        cumulative_var_threshold=cumulative_var_threshold
+        cumulative_var_threshold=cumulative_var_threshold,
+        verbose=verbose
     )
     
     summary = {}
