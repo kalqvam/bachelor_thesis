@@ -136,8 +136,13 @@ def bai_ng_ic(X: np.ndarray, max_factors: int = 25, cumulative_var_threshold: fl
         }
 
 
-def panic_decomposition(data_panel: pd.DataFrame, cumulative_var_threshold: float = 0.85) -> Dict[str, Any]:
+def panic_decomposition(data_panel: pd.DataFrame, cumulative_var_threshold: float = 0.85, 
+                       verbose: bool = True) -> Dict[str, Any]:
     nan_percentage = data_panel.isna().sum().sum() / (data_panel.shape[0] * data_panel.shape[1])
+    
+    if verbose:
+        print_subsection_header("PANIC Factor Decomposition")
+        print(f"Panel contains {nan_percentage:.2%} missing values")
 
     temp_data = data_panel.copy()
     if nan_percentage > 0:
@@ -145,17 +150,29 @@ def panic_decomposition(data_panel: pd.DataFrame, cumulative_var_threshold: floa
         if temp_data.isna().sum().sum() > 0:
             col_means = temp_data.mean()
             temp_data = temp_data.fillna(col_means)
+            if verbose:
+                print(f"Filled remaining NaNs with column means")
 
     X = temp_data.to_numpy().T
     N, T = X.shape
+
+    if verbose:
+        print(f"Decomposing panel with N={N} entities, T={T} time periods")
 
     X_demean = X - np.nanmean(X, axis=1, keepdims=True)
 
     max_factors = min(25, min(N, T) - 1)
     try:
         n_factors, ic_info = bai_ng_ic(X_demean, max_factors=max_factors, cumulative_var_threshold=cumulative_var_threshold)
+        if verbose:
+            print(f"Bai-Ng information criteria selected {n_factors} factors using {ic_info['selection_method']}")
+            print(f"Information criteria: IC1 suggested {ic_info['optimal_r1']}, IC2 suggested {ic_info['optimal_r2']}")
+            print(f"Cumulative variance threshold ({cumulative_var_threshold}) suggested {ic_info.get('var_threshold_r', 'N/A')}")
     except Exception as e:
         n_factors = min(3, min(N, T) // 3)
+        if verbose:
+            print(f"Error in factor selection: {str(e)}")
+            print(f"Falling back to {n_factors} factors")
 
     try:
         pca = PCA(n_components=n_factors)
@@ -163,14 +180,20 @@ def panic_decomposition(data_panel: pd.DataFrame, cumulative_var_threshold: floa
         loadings = pca.components_.T
 
         explained_var = np.sum(pca.explained_variance_ratio_)
+        if verbose:
+            print(f"Factors explain {explained_var:.2%} of total variance")
 
         common_component = np.dot(loadings, factors)
 
         idiosyncratic_component = X_demean - common_component
 
-        if (np.isnan(common_component).any() or np.isnan(idiosyncratic_component).any()):
-            pass
+        if (np.isnan(common_component).any() or np.isnan(idiosyncratic_component).any()) and verbose:
+            print("Warning: Decomposition contains NaN values")
     except Exception as e:
+        if verbose:
+            print(f"PCA decomposition failed: {str(e)}")
+            print("Attempting fallback decomposition method...")
+
         try:
             X_std = (X_demean - np.nanmean(X_demean, axis=1, keepdims=True)) / (np.nanstd(X_demean, axis=1, keepdims=True) + 1e-10)
 
