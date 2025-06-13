@@ -158,7 +158,7 @@ def panel_adf_test(data_panel: np.ndarray, trend: bool = False) -> Dict[str, Any
     }
 
 
-def validate_panel_data(data: pd.DataFrame, variables: List[str]) -> Dict[str, Any]:
+def validate_panel_data(data: pd.DataFrame, variables: List[str], verbose: bool = True) -> Dict[str, Any]:
     validation_results = {
         'valid_variables': [],
         'invalid_variables': [],
@@ -166,13 +166,21 @@ def validate_panel_data(data: pd.DataFrame, variables: List[str]) -> Dict[str, A
         'data_quality': {}
     }
     
+    if verbose:
+        print_subsection_header("Validating Panel Data")
+        print(f"Checking {len(variables)} variables")
+    
     for variable in variables:
         if variable not in data.columns:
             validation_results['missing_variables'].append(variable)
+            if verbose:
+                print(f"✗ {variable}: Column not found")
             continue
         
         if not pd.api.types.is_numeric_dtype(data[variable]):
             validation_results['invalid_variables'].append(variable)
+            if verbose:
+                print(f"✗ {variable}: Non-numeric data type")
             continue
         
         missing_rate = data[variable].isna().sum() / len(data)
@@ -183,6 +191,8 @@ def validate_panel_data(data: pd.DataFrame, variables: List[str]) -> Dict[str, A
                 'missing_rate': missing_rate,
                 'reason': 'too_many_missing'
             }
+            if verbose:
+                print(f"✗ {variable}: Too many missing values ({missing_rate:.1%})")
             continue
         
         validation_results['valid_variables'].append(variable)
@@ -190,23 +200,38 @@ def validate_panel_data(data: pd.DataFrame, variables: List[str]) -> Dict[str, A
             'missing_rate': missing_rate,
             'observations': data[variable].notna().sum()
         }
+        if verbose:
+            print(f"✓ {variable}: Valid ({missing_rate:.1%} missing)")
+    
+    if verbose:
+        print(f"Validation complete: {len(validation_results['valid_variables'])}/{len(variables)} variables valid")
     
     return validation_results
 
 
-def prepare_panel_data(data: pd.DataFrame, variable: str) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+def prepare_panel_data(data: pd.DataFrame, variable: str, verbose: bool = True) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     dupes = data.duplicated(subset=['ticker', 'date'])
     if dupes.any():
         data = data.drop_duplicates(subset=['ticker', 'date'])
+        if verbose:
+            print(f"Removed {dupes.sum()} duplicate ticker-date combinations")
     
     pivot_data = data.pivot(index='date', columns='ticker', values=variable)
     pivot_data = pivot_data.sort_index()
+    
+    if verbose:
+        print(f"Created pivot table: {pivot_data.shape[0]} periods × {pivot_data.shape[1]} entities")
     
     pivot_data = pivot_data.fillna(method='ffill').fillna(method='bfill')
     
     missing_rate = pivot_data.isna().sum().sum() / (pivot_data.shape[0] * pivot_data.shape[1])
     
+    if verbose:
+        print(f"Missing data rate after forward/backward fill: {missing_rate:.2%}")
+    
     if missing_rate > 0.2:
+        if verbose:
+            print(f"Error: Too many missing values ({missing_rate:.2%} > 20%)")
         return None, {
             'error': 'Too many missing values',
             'missing_rate': missing_rate
@@ -215,7 +240,12 @@ def prepare_panel_data(data: pd.DataFrame, variable: str) -> Tuple[pd.DataFrame,
     valid_cols = pivot_data.columns[pivot_data.count() >= 10]
     pivot_data = pivot_data[valid_cols]
     
+    if verbose:
+        print(f"Retained {len(valid_cols)} entities with ≥10 observations")
+    
     if len(valid_cols) < 5:
+        if verbose:
+            print(f"Error: Not enough entities with sufficient data ({len(valid_cols)} < 5)")
         return None, {
             'error': 'Not enough entities with sufficient data',
             'valid_entities': len(valid_cols)
