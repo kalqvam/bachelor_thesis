@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 
 from .panel_diagnostics import adf_test
 
@@ -45,7 +45,9 @@ def moving_block_bootstrap(x: np.ndarray, block_size: int, sample_size: int = No
         return valid_x[indices]
 
 
-def unified_bootstrap(decomp_result: Dict[str, Any], n_bootstraps: int = 999, block_size: int = None, trend: bool = False) -> Dict[str, Any]:
+def unified_bootstrap(decomp_result: Dict[str, Any], n_bootstraps: int = 999, 
+                     block_size: Optional[int] = None, trend: bool = False, 
+                     verbose: bool = True) -> Dict[str, Any]:
     common_factors = decomp_result['common_factors']
     factor_loadings = decomp_result['factor_loadings']
     idiosyncratic = decomp_result['idiosyncratic_component']
@@ -53,9 +55,17 @@ def unified_bootstrap(decomp_result: Dict[str, Any], n_bootstraps: int = 999, bl
     r, T = common_factors.shape
     N = idiosyncratic.shape[0]
 
+    if verbose:
+        print_subsection_header("Bootstrap Inference")
+        print(f"Starting bootstrap with r={r} factors, N={N} entities, T={T} time periods")
+
     if block_size is None:
         block_size = max(int(np.sqrt(T)), 2)
 
+    if verbose:
+        print(f"Using block size: {block_size}")
+        print("Testing original common factors...")
+    
     factor_adf_stats = []
     factor_adf_results = []
     for i in range(r):
@@ -64,10 +74,17 @@ def unified_bootstrap(decomp_result: Dict[str, Any], n_bootstraps: int = 999, bl
         if 'error' not in adf_result:
             factor_adf_stats.append(adf_result['adf_stat'])
         else:
+            if verbose:
+                print(f"  Warning: Factor {i} ADF test failed: {adf_result.get('error', 'Unknown error')}")
             factor_adf_stats.append(np.nan)
 
     valid_factor_adfs = [x for x in factor_adf_stats if not np.isnan(x)]
+    if verbose:
+        print(f"Found {len(valid_factor_adfs)}/{r} valid factor ADF statistics")
 
+    if verbose:
+        print("Testing idiosyncratic components...")
+    
     idio_adf_stats = []
     for i in range(N):
         series = idiosyncratic[i, :]
@@ -78,22 +95,37 @@ def unified_bootstrap(decomp_result: Dict[str, Any], n_bootstraps: int = 999, bl
         if 'error' not in adf_result:
             idio_adf_stats.append(adf_result['adf_stat'])
 
+    if verbose:
+        print(f"Found {len(idio_adf_stats)}/{N} valid idiosyncratic component ADF statistics")
+
     if len(idio_adf_stats) > 0:
         Pb_stat = np.nanmean(idio_adf_stats)
+        if verbose:
+            print(f"Pb statistic (mean of idiosyncratic ADFs): {Pb_stat:.4f}")
     else:
         Pb_stat = np.nan
+        if verbose:
+            print("Warning: No valid idiosyncratic ADF statistics, Pb_stat is NaN")
 
     if len(valid_factor_adfs) > 0:
         Pa_stat = np.nanmin(valid_factor_adfs)
+        if verbose:
+            print(f"Pa statistic (min of factor ADFs): {Pa_stat:.4f}")
     else:
         Pa_stat = np.nan
+        if verbose:
+            print("Warning: No valid factor ADF statistics, Pa_stat is NaN")
 
     if not np.isnan(Pa_stat) and not np.isnan(Pb_stat):
         weight_common = r / (r + 1)
         weight_idio = 1 / (r + 1)
         Pc_stat = weight_common * Pa_stat + weight_idio * Pb_stat
+        if verbose:
+            print(f"Pc statistic (weighted average): {Pc_stat:.4f}")
     else:
         Pc_stat = np.nan
+        if verbose:
+            print("Warning: Cannot calculate Pc statistic due to NaN in Pa or Pb")
 
     bootstrap_Pa = []
     bootstrap_Pb = []
@@ -102,7 +134,13 @@ def unified_bootstrap(decomp_result: Dict[str, Any], n_bootstraps: int = 999, bl
     successful_bootstraps = 0
     failed_bootstraps = 0
 
+    if verbose:
+        print(f"Performing {n_bootstraps} bootstrap iterations...")
+    
     for b in range(n_bootstraps):
+        if verbose and b > 0 and b % 100 == 0:
+            print(f"  Completed {b} bootstrap iterations ({successful_bootstraps} successful)")
+
         try:
             boot_idiosyncratic = np.zeros_like(idiosyncratic)
             for i in range(N):
@@ -163,23 +201,38 @@ def unified_bootstrap(decomp_result: Dict[str, Any], n_bootstraps: int = 999, bl
 
         except Exception as e:
             failed_bootstraps += 1
+            if verbose and failed_bootstraps <= 5:
+                print(f"  Bootstrap iteration {b} failed: {str(e)}")
             continue
+
+    if verbose:
+        print(f"Bootstrap complete: {successful_bootstraps} successful, {failed_bootstraps} failed")
 
     if not np.isnan(Pa_stat):
         Pa_p_values = [r.get('p_value', 1.0) for r in factor_adf_results if 'error' not in r]
         Pa_p_value = min(Pa_p_values) if Pa_p_values else np.nan
+        if verbose:
+            print(f"Pa p-value (from original tests): {Pa_p_value:.4f}")
     else:
         Pa_p_value = np.nan
 
     if len(bootstrap_Pb) > 0 and not np.isnan(Pb_stat):
         Pb_p_value = np.mean(np.array(bootstrap_Pb) <= Pb_stat)
+        if verbose:
+            print(f"Pb p-value (from {len(bootstrap_Pb)} bootstrap samples): {Pb_p_value:.4f}")
     else:
         Pb_p_value = np.nan
+        if verbose:
+            print("Warning: Cannot calculate Pb p-value (no valid bootstrap samples)")
 
     if len(bootstrap_Pc) > 0 and not np.isnan(Pc_stat):
         Pc_p_value = np.mean(np.array(bootstrap_Pc) <= Pc_stat)
+        if verbose:
+            print(f"Pc p-value (from {len(bootstrap_Pc)} bootstrap samples): {Pc_p_value:.4f}")
     else:
         Pc_p_value = np.nan
+        if verbose:
+            print("Warning: Cannot calculate Pc p-value (no valid bootstrap samples)")
 
     return {
         'Pa_stat': Pa_stat,
