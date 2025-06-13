@@ -4,7 +4,7 @@ import statsmodels.api as sm
 from scipy import stats
 from typing import Dict, List, Optional, Tuple, Any
 
-from ...utils import print_subsection_header, format_number
+from ..utils import print_subsection_header, format_number
 
 
 def pesaran_cd_test(data: pd.DataFrame, variable: str) -> Dict[str, Any]:
