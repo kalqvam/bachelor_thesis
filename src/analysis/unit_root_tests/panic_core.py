@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Any
 from .panel_diagnostics import pesaran_cd_test, validate_panel_data, prepare_panel_data
 from .decomposition import panic_decomposition
 from .bootstrap import unified_bootstrap
-from ..utils import print_section_header, print_subsection_header, format_number
+from ...utils import print_section_header, print_subsection_header, format_number
 
 
 def panic_test(data_panel: pd.DataFrame, n_bootstraps: int = 199, trend: bool = False, 
