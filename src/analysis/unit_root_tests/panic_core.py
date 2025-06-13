@@ -10,7 +10,7 @@ from ...utils import print_section_header, print_subsection_header, format_numbe
 
 def panic_test(data_panel: pd.DataFrame, n_bootstraps: int = 199, trend: bool = False, 
                block_size: Optional[int] = None, cumulative_var_threshold: float = 0.85, 
-               verbose: bool = False) -> Dict[str, Any]:
+               verbose: bool = True) -> Dict[str, Any]:
     
     decomp_result = panic_decomposition(data_panel, cumulative_var_threshold=cumulative_var_threshold, verbose=verbose)
     
@@ -111,7 +111,7 @@ def test_panel_unit_roots(data: pd.DataFrame, variables_to_test: Optional[List[s
             trend=trend,
             block_size=auto_block_size,
             cumulative_var_threshold=cumulative_var_threshold,
-            verbose=False
+            verbose=verbose
         )
         
         if verbose:
