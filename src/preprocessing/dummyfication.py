@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Tuple, Optional, Union
 
-from ...utils import (
+from ..utils import (
     DEFAULT_TICKER_COLUMN, print_subsection_header, 
     format_number, print_processing_stats
 )
