@@ -6,11 +6,17 @@ from typing import Dict, Tuple, Any
 from ...utils import print_subsection_header
 
 
-def bai_ng_ic(X: np.ndarray, max_factors: int = 25, cumulative_var_threshold: float = 0.85) -> Tuple[int, Dict[str, Any]]:
+def bai_ng_ic(X: np.ndarray, max_factors: int = 25, cumulative_var_threshold: float = 0.85, 
+              verbose: bool = False) -> Tuple[int, Dict[str, Any]]:
     N, T = X.shape
+
+    if verbose:
+        print(f"Computing Bai-Ng criteria with max {max_factors} factors (N={N}, T={T})")
 
     has_nans = np.isnan(X).any()
     if has_nans:
+        if verbose:
+            print("Warning: Data contains NaN values, replacing with zeros for factor selection")
         X = np.nan_to_num(X, nan=0.0)
 
     try:
@@ -19,6 +25,8 @@ def bai_ng_ic(X: np.ndarray, max_factors: int = 25, cumulative_var_threshold: fl
         X_demean = X
 
     actual_max = min(max_factors, min(N, T) - 1)
+    if verbose:
+        print(f"Testing up to {actual_max} factors")
 
     try:
         if T > N:
@@ -33,6 +41,8 @@ def bai_ng_ic(X: np.ndarray, max_factors: int = 25, cumulative_var_threshold: fl
             cum_var_ratio = np.cumsum(eigvals) / total_var
             var_threshold_r = np.argmax(cum_var_ratio >= cumulative_var_threshold) + 1
             var_threshold_r = min(var_threshold_r, actual_max)
+            if verbose:
+                print(f"Cumulative variance threshold {cumulative_var_threshold} reached at r={var_threshold_r}")
 
             IC1 = []
             IC2 = []
@@ -53,6 +63,9 @@ def bai_ng_ic(X: np.ndarray, max_factors: int = 25, cumulative_var_threshold: fl
 
                 IC1.append(ic1_value)
                 IC2.append(ic2_value)
+
+                if verbose:
+                    print(f"  r={r}: V_r={V_r:.4f}, IC1={ic1_value:.4f}, IC2={ic2_value:.4f}, cum_var={cum_var_ratio[r-1]:.4f}")
         else:
             pca = PCA(n_components=actual_max)
             pca.fit(X_demean.T)
@@ -60,6 +73,8 @@ def bai_ng_ic(X: np.ndarray, max_factors: int = 25, cumulative_var_threshold: fl
             cum_var_ratio = np.cumsum(pca.explained_variance_ratio_)
             var_threshold_r = np.argmax(cum_var_ratio >= cumulative_var_threshold) + 1
             var_threshold_r = min(var_threshold_r, actual_max)
+            if verbose:
+                print(f"Cumulative variance threshold {cumulative_var_threshold} reached at r={var_threshold_r}")
 
             IC1 = []
             IC2 = []
@@ -85,6 +100,9 @@ def bai_ng_ic(X: np.ndarray, max_factors: int = 25, cumulative_var_threshold: fl
                 IC1.append(ic1_value)
                 IC2.append(ic2_value)
 
+                if verbose:
+                    print(f"  r={r}: V_r={V_r:.4f}, IC1={ic1_value:.4f}, IC2={ic2_value:.4f}, cum_var={cum_var_ratio[r-1]:.4f}")
+
         optimal_r1 = np.nanargmin(IC1) + 1 if not np.all(np.isnan(IC1)) else 1
         optimal_r2 = np.nanargmin(IC2) + 1 if not np.all(np.isnan(IC2)) else 1
 
@@ -96,22 +114,37 @@ def bai_ng_ic(X: np.ndarray, max_factors: int = 25, cumulative_var_threshold: fl
         if optimal_r1 == actual_max and optimal_r2 < actual_max:
             optimal_r = optimal_r2
             selection_method = "IC2"
+            if verbose:
+                print(f"IC1 selected maximum factors, using IC2 selection instead: {optimal_r}")
         elif optimal_r1 == actual_max and optimal_r2 == actual_max:
             optimal_r = var_threshold_r
             selection_method = "Cumulative variance threshold"
+            if verbose:
+                print(f"Both IC1 and IC2 selected maximum factors, using cumulative variance threshold ({cumulative_var_threshold}): {optimal_r}")
 
         if optimal_r > max_reasonable and optimal_r2 > max_reasonable:
+            old_r = optimal_r
             optimal_r = var_threshold_r
             selection_method = "Cumulative variance threshold (after IC exceeded max reasonable)"
+            if verbose:
+                print(f"Both IC1 ({optimal_r1}) and IC2 ({optimal_r2}) exceeded max reasonable factors ({max_reasonable}), using cumulative variance threshold: {optimal_r}")
 
             if optimal_r > max_reasonable:
+                if verbose:
+                    print(f"Cumulative variance threshold also exceeded max reasonable factors, capping at {max_reasonable}")
                 optimal_r = max_reasonable
                 selection_method = "Max reasonable (fallback)"
         elif optimal_r > max_reasonable:
+            old_r = optimal_r
             optimal_r = max_reasonable
+            if verbose:
+                print(f"Selected factors ({old_r}) > max reasonable factors, capping at {max_reasonable}")
 
         if optimal_r > max_reasonable:
+            old_r = optimal_r
             optimal_r = max_reasonable
+            if verbose:
+                print(f"Selected factors ({old_r}) > 1/3 of min(N,T), capping at {max_reasonable}")
 
         return optimal_r, {
             'IC1': IC1,
@@ -124,7 +157,11 @@ def bai_ng_ic(X: np.ndarray, max_factors: int = 25, cumulative_var_threshold: fl
         }
 
     except Exception as e:
+        if verbose:
+            print(f"Error in Bai-Ng criteria calculation: {str(e)}")
         optimal_r = min(3, min(N, T) // 5)
+        if verbose:
+            print(f"Using fallback factor count: {optimal_r}")
         return optimal_r, {
             'IC1': [],
             'IC2': [],
@@ -163,7 +200,7 @@ def panic_decomposition(data_panel: pd.DataFrame, cumulative_var_threshold: floa
 
     max_factors = min(25, min(N, T) - 1)
     try:
-        n_factors, ic_info = bai_ng_ic(X_demean, max_factors=max_factors, cumulative_var_threshold=cumulative_var_threshold)
+        n_factors, ic_info = bai_ng_ic(X_demean, max_factors=max_factors, cumulative_var_threshold=cumulative_var_threshold, verbose=verbose)
         if verbose:
             print(f"Bai-Ng information criteria selected {n_factors} factors using {ic_info['selection_method']}")
             print(f"Information criteria: IC1 suggested {ic_info['optimal_r1']}, IC2 suggested {ic_info['optimal_r2']}")
