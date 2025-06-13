@@ -3,6 +3,7 @@ from . import data_acquisition
 from . import preprocessing
 from . import kalman
 from . import transformations
+from . import analysis
 
 __version__ = "0.1.0"
 __author__ = "kalqvam"
@@ -12,5 +13,6 @@ __all__ = [
     'data_acquisition',
     'preprocessing',
     'kalman', 
-    'transformations'
+    'transformations',
+    'analysis'
 ]
