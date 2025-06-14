@@ -3,16 +3,16 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "esg-gmm"
+name = "bachelor-thesis"
 version = "0.1.0"
 description = "ESG and financial data analysis toolkit with advanced preprocessing and econometric modeling"
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [
-    {name = "kalqvam", email = "your.email@example.com"},
+    {name = "kalqvam", email = "ennor.finance@gmail.com"},
 ]
 maintainers = [
-    {name = "kalqvam", email = "your.email@example.com"},
+    {name = "kalqvam", email = "ennor.finance@gmail.com"},
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -26,7 +26,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Information Analysis",
     "Topic :: Office/Business :: Financial",
 ]
-keywords = ["finance", "esg", "econometrics", "time-series", "panel-data"]
+keywords = ["kalman", "esg", "econometrics", "time-series", "panel-data", "gmm"]
 requires-python = ">=3.8"
 dependencies = [
     "pandas>=1.5.0",
@@ -76,15 +76,13 @@ r-integration = [
 [project.urls]
 Homepage = "https://github.com/kalqvam/esg_gmm"
 Repository = "https://github.com/kalqvam/esg_gmm"
-Documentation = "https://github.com/kalqvam/esg_gmm#readme"
-"Bug Tracker" = "https://github.com/kalqvam/esg_gmm/issues"
 
 [tool.setuptools]
 package-dir = {"" = "."}
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["esg_gmm*"]
+include = ["bachelor_thesis*"]
 exclude = ["tests*", "docs*", "py_scripts*"]
 
 [tool.setuptools.package-data]
@@ -123,7 +121,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 
 [tool.coverage.run]
-source = ["esg_gmm"]
+source = ["bachelor_thesis"]
 omit = [
     "*/tests/*",
     "*/test_*",
