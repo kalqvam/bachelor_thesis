@@ -22,7 +22,8 @@ from .unit_root_tests import (
 
 from .diagnostics import (
     PanelDiagnostics,
-    quick_diagnostics
+    quick_diagnostics,
+    run_correlation_analysis
 )
 
 from .correlations import (
