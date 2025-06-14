@@ -11,13 +11,107 @@ from ..utils import (
     DEFAULT_TICKER_COLUMN, print_section_header, print_subsection_header,
     format_number, print_dataset_info, print_processing_stats
 )
-from .missing_esg_visual import analyze_esg_missing_data
 
 warnings.filterwarnings('ignore')
 
 plt.style.use('seaborn-v0_8-whitegrid')
 plt.rcParams['figure.figsize'] = [12, 8]
 plt.rcParams['figure.dpi'] = 100
+
+
+def analyze_esg_missing_data(file_path='decircused_data.csv'):
+    print(f"Loading panel dataset from {file_path}...")
+    df = pd.read_csv(file_path)
+
+    print(f"Dataset shape: {df.shape}")
+    print(f"Number of unique companies: {df['ticker'].nunique()}")
+    print("\nMissing data overview:")
+    print(f"Missing ESG scores: {df['environmentalScore'].isna().sum()} / {len(df)} rows")
+
+    print("\nCalculating missing rates per company...")
+
+    company_missing_rates = {}
+    for ticker in df['ticker'].unique():
+        company_data = df[df['ticker'] == ticker]
+        total_rows = len(company_data)
+        missing_rows = company_data['environmentalScore'].isna().sum()
+        missing_rate = missing_rows / total_rows
+        company_missing_rates[ticker] = {
+            'total_observations': total_rows,
+            'missing_rows': missing_rows,
+            'missing_rate': missing_rate
+        }
+
+    missing_df = pd.DataFrame.from_dict(company_missing_rates, orient='index')
+    missing_df.reset_index(inplace=True)
+    missing_df.rename(columns={'index': 'ticker'}, inplace=True)
+
+    csv_output = 'esg_missing_data_rates.csv'
+    missing_df.to_csv(csv_output, index=False)
+    print(f"Missing-rate DataFrame saved to {csv_output}")
+
+    print("\nMissing rate summary statistics:")
+    print(missing_df['missing_rate'].describe())
+
+    plt.style.use('classic')
+    plt.rcParams['font.family'] = 'Times New Roman'
+    plt.rcParams['font.size'] = 12
+
+    avg_obs_per_company = missing_df['total_observations'].mean()
+
+    plt.figure(figsize=(12, 8), facecolor='white')
+    ax = plt.gca()
+    ax.set_facecolor('white')
+
+    if missing_df['total_observations'].std() < 0.5:
+        possible_bins = int(missing_df['total_observations'].iloc[0]) + 1
+        sns.histplot(
+            data=missing_df,
+            x='missing_rate',
+            bins=possible_bins,
+            kde=False,
+            color='gray',
+            edgecolor=None
+        )
+    else:
+        num_bins = min(20, len(missing_df) // 5)
+        sns.histplot(
+            data=missing_df,
+            x='missing_rate',
+            bins=num_bins,
+            kde=False,
+            color='gray',
+            edgecolor=None
+        )
+
+    plt.title('')
+    plt.xlabel('Missing Data Rate', fontsize=12)
+    plt.ylabel('Number of Companies', fontsize=12)
+    plt.gca().xaxis.set_major_formatter(
+        plt.FuncFormatter(lambda x, _: f'{x:.0%}')
+    )
+    plt.grid(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_edgecolor('gray')
+    ax.spines['left'].set_edgecolor('gray')
+    ax.spines['bottom'].set_linewidth(1)
+    ax.spines['left'].set_linewidth(1)
+    ax.tick_params(axis='both', which='both', length=0)
+
+    output_path = 'esg_missing_data_histogram.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    print(f"\nHistogram saved to {output_path}")
+    plt.show()
+
+    stats = {
+        'num_companies': df['ticker'].nunique(),
+        'avg_missing_rate': missing_df['missing_rate'].mean(),
+        'median_missing_rate': missing_df['missing_rate'].median(),
+        'overall_missing_rate': df['environmentalScore'].isna().sum() / len(df)
+    }
+
+    return missing_df, stats
 
 
 class PanelDiagnostics:
@@ -414,6 +508,32 @@ class PanelDiagnostics:
         
         return pd.DataFrame(result)
 
+    def analyze_esg_missing_data(self, save_temp_file: bool = True, 
+                               temp_file_path: str = 'temp_esg_analysis.csv',
+                               verbose: bool = True) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        
+        if verbose:
+            print_subsection_header("ESG Missing Data Analysis")
+        
+        if save_temp_file:
+            self.df.to_csv(temp_file_path, index=False)
+            if verbose:
+                print(f"Temporary file saved for ESG analysis: {temp_file_path}")
+        
+        missing_df, stats = analyze_esg_missing_data(temp_file_path)
+        
+        if verbose:
+            print("ESG Missing Data Results:")
+            print(f"  Companies analyzed: {format_number(stats['num_companies'])}")
+            print(f"  Average missing rate: {stats['avg_missing_rate']:.1%}")
+            print(f"  Median missing rate: {stats['median_missing_rate']:.1%}")
+            print(f"  Overall missing rate: {stats['overall_missing_rate']:.1%}")
+            print("Generated files:")
+            print("  - esg_missing_data_histogram.png")
+            print("  - esg_missing_data_rates.csv")
+        
+        return missing_df, stats
+
     def run_full_diagnostics(self, sample_companies: Optional[List[str]] = None, 
                            sample_size: int = 5, target_columns: Optional[List[str]] = None,
                            verbose: bool = True) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
@@ -469,32 +589,6 @@ class PanelDiagnostics:
             category_stats = self.calculate_category_summary_statistics(target_columns, verbose=verbose)
         
         return xtsum_results, category_stats
-
-    def analyze_esg_missing_data(self, save_temp_file: bool = True, 
-                               temp_file_path: str = 'temp_esg_analysis.csv',
-                               verbose: bool = True) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-        
-        if verbose:
-            print_subsection_header("ESG Missing Data Analysis")
-        
-        if save_temp_file:
-            self.df.to_csv(temp_file_path, index=False)
-            if verbose:
-                print(f"Temporary file saved for ESG analysis: {temp_file_path}")
-        
-        missing_df, stats = analyze_esg_missing_data(temp_file_path)
-        
-        if verbose:
-            print("ESG Missing Data Results:")
-            print(f"  Companies analyzed: {format_number(stats['num_companies'])}")
-            print(f"  Average missing rate: {stats['avg_missing_rate']:.1%}")
-            print(f"  Median missing rate: {stats['median_missing_rate']:.1%}")
-            print(f"  Overall missing rate: {stats['overall_missing_rate']:.1%}")
-            print("Generated files:")
-            print("  - esg_missing_data_histogram.png")
-            print("  - esg_missing_data_rates.csv")
-        
-        return missing_df, stats
 
     def get_dataset_info(self) -> Dict[str, Any]:
         info = {
