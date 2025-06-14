@@ -23,7 +23,7 @@ from .unit_root_tests import (
 from .diagnostics import (
     PanelDiagnostics,
     quick_diagnostics,
-    run_correlation_analysis
+    analyze_esg_missing_data
 )
 
 from .correlations import (
