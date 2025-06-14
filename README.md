@@ -41,42 +41,61 @@ esg_gmm/
 ├── LICENSE
 ├── .gitignore
 ├── pyproject.toml
+│
 ├── src/
 │   ├── data_acquisition/
-│   │   └── api_client.py
+│   │   ├── api_client.py
+│   │   ├── financial_data.py
+│   │   ├── esg_data.py
+│   │   ├── profile_data.py
+│   │   └── etf_holdings.py
+│   │
 │   ├── preprocessing/
-│   │   └── cleaning/
-│   │       ├── column_management.py
-│   │       ├── data_filtering.py
-│   │       ├── date_processing.py
-│   │       ├── duplicates.py
-│   │       ├── missing_data.py
-│   │       ├── panel_validation.py
-│   │       ├── interpolation.py
-│   │       └── declowning/
-│   │           ├── patterns.py
-│   │           ├── outliers.py
-│   │           └── shit_filter.py
+│   │   ├── interpolation.py
+│   │   ├── dummyfication.py
+│   │   │
+│   │   ├── cleaning/
+│   │   │   ├── column_management.py
+│   │   │   ├── data_filtering.py
+│   │   │   ├── date_processing.py
+│   │   │   ├── duplicates.py
+│   │   │   ├── missing_data.py
+│   │   │   └── panel_validation.py
+│   │   │
+│   │   └── declowning/
+│   │       ├── patterns.py
+│   │       ├── outliers.py
+│   │       ├── shit_filter.py
+│   │       └── utils.py
+│   │
 │   ├── kalman/
 │   │   ├── parameter_tuning.py
 │   │   └── imputation.py
+│   │
 │   ├── transformations/
 │   │   ├── calculations.py
 │   │   └── seasonality.py
+│   │
 │   ├── analysis/
 │   │   ├── diagnostics.py
 │   │   ├── correlations.py
 │   │   ├── variance_analysis.py
+│   │   │
 │   │   └── unit_root_tests/
 │   │       ├── panic_core.py
 │   │       ├── decomposition.py
 │   │       ├── bootstrap.py
-│   │       └── diagnostics.py
+│   │       └── panel_diagnostics.py
+│   │
 │   └── utils/
-│       └── file_handlers.py
-└── scripts/
-    ├── gmm_covid_shock.R
-    └── gmm_war_shock.R
+│       ├── constants.py
+│       ├── file_handlers.py
+│       ├── logging_helpers.py
+│       └── data_validation.py
+│
+└── r_scripts/
+   ├── gmm_covid_shock.R
+   └── gmm_war_shock.R
 ```
 
 ## Data Processing Pipeline
