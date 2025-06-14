@@ -1,6 +1,6 @@
 # ESG, Earnings, and Earthquakes: A Skeptical Analysis of Resilience in Macroeconomic Chaos
 
-This repository contains the computational materials and analytical code developed for the bachelor's thesis "ESG, Earnings, and Earthquakes: A Skeptical Analysis of Resilience in Macroeconomic Chaos" by Mikael Haitin, submitted to Tallinn University of Technology in 2025.
+This repository contains the computational materials and analytical code developed for the bachelor's thesis "ESG, Earnings, and Earthquakes: A Skeptical Analysis of Resilience in Macroeconomic Chaos".
 
 ## Abstract
 
