@@ -11,6 +11,7 @@ from ..utils import (
     DEFAULT_TICKER_COLUMN, print_section_header, print_subsection_header,
     format_number, print_dataset_info, print_processing_stats
 )
+from .missing_esg_visual import analyze_esg_missing_data
 
 warnings.filterwarnings('ignore')
 
@@ -468,6 +469,32 @@ class PanelDiagnostics:
             category_stats = self.calculate_category_summary_statistics(target_columns, verbose=verbose)
         
         return xtsum_results, category_stats
+
+    def analyze_esg_missing_data(self, save_temp_file: bool = True, 
+                               temp_file_path: str = 'temp_esg_analysis.csv',
+                               verbose: bool = True) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        
+        if verbose:
+            print_subsection_header("ESG Missing Data Analysis")
+        
+        if save_temp_file:
+            self.df.to_csv(temp_file_path, index=False)
+            if verbose:
+                print(f"Temporary file saved for ESG analysis: {temp_file_path}")
+        
+        missing_df, stats = analyze_esg_missing_data(temp_file_path)
+        
+        if verbose:
+            print("ESG Missing Data Results:")
+            print(f"  Companies analyzed: {format_number(stats['num_companies'])}")
+            print(f"  Average missing rate: {stats['avg_missing_rate']:.1%}")
+            print(f"  Median missing rate: {stats['median_missing_rate']:.1%}")
+            print(f"  Overall missing rate: {stats['overall_missing_rate']:.1%}")
+            print("Generated files:")
+            print("  - esg_missing_data_histogram.png")
+            print("  - esg_missing_data_rates.csv")
+        
+        return missing_df, stats
 
     def get_dataset_info(self) -> Dict[str, Any]:
         info = {
