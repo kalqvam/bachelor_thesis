@@ -7,7 +7,7 @@ import random
 import warnings
 from typing import List, Optional, Dict, Any, Union, Tuple
 
-from ...utils import (
+from ..utils import (
     DEFAULT_TICKER_COLUMN, print_section_header, print_subsection_header,
     format_number, print_dataset_info, print_processing_stats
 )
