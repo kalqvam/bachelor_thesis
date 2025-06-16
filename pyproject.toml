@@ -74,8 +74,8 @@ r-integration = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/kalqvam/esg_gmm"
-Repository = "https://github.com/kalqvam/esg_gmm"
+Homepage = "https://github.com/kalqvam/bachelor_thesis"
+Repository = "https://github.com/kalqvam/bachelor_thesis"
 
 [tool.setuptools]
 package-dir = {"" = "."}
